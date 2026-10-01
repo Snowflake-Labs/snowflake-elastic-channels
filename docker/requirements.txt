@@ -1,0 +1,8 @@
+# Runtime deps for the EKS worker + monitor containers only (docker/Dockerfile).
+# Kept separate from the repo-root requirements.txt (which also pulls in
+# Snowpark, Streamlit, pandas, pytest — dev/analysis tooling not needed inside
+# the container image).
+snowflake-connector-python>=4.7.2
+snowpipe-streaming>=1.7.1
+cryptography>=46.0.5
+kubernetes>=36.0.3

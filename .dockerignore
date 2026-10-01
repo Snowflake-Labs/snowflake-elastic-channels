@@ -1,0 +1,10 @@
+# Local Rust build artifacts (native/ — see docker/Dockerfile's native-builder
+# stage, which compiles fresh inside the container). Without this, a locally
+# built wheel/target dir for the host's platform (e.g. macOS) gets copied into
+# the build context and can shadow the freshly built Linux wheel.
+native/target/
+
+.venv/
+__pycache__/
+*.pyc
+.git/

@@ -1,0 +1,50 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Least-privilege access for k8s_monitor.py: list/get worker pods and read
+# their logs, scoped to the elastic-ramp namespace only (no cluster-wide
+# access, no write permissions).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: elastic-monitor
+  namespace: elastic-ramp
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: elastic-monitor-pod-reader
+  namespace: elastic-ramp
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: elastic-monitor-pod-reader-binding
+  namespace: elastic-ramp
+subjects:
+  - kind: ServiceAccount
+    name: elastic-monitor
+    namespace: elastic-ramp
+roleRef:
+  kind: Role
+  name: elastic-monitor-pod-reader
+  apiGroup: rbac.authorization.k8s.io

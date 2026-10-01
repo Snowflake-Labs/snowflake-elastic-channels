@@ -1,0 +1,13 @@
+snowflake-connector-python>=4.7.2
+snowflake-snowpark-python>=1.54.0
+snowpipe-streaming>=1.7.1
+cryptography>=46.0.5
+python-dotenv>=1.0.0
+streamlit>=1.32.0
+pandas>=2.0.0
+pytest>=8.0.0
+# EKS execution path: orchestration scripts don't need it locally (they shell
+# out to kubectl/eksctl), but k8s_monitor.py (running in-cluster) does — kept
+# here too so `pip install -r requirements.txt` is sufficient for local unit
+# tests that import it. The container image uses docker/requirements.txt.
+kubernetes>=36.0.3

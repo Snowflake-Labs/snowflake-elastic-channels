@@ -1,0 +1,111 @@
+// Elastic Channels benchmark architecture — source of truth for docs/architecture.png
+// Regenerate after any design change: ./scripts/render_architecture.sh
+
+digraph ElasticChannelsArchitecture {
+  graph [
+    rankdir=TB,
+    fontname="Helvetica",
+    fontsize=11,
+    labelloc=t,
+    label="Elastic Channels Benchmark Architecture\\n(persistent EKS cluster · one pod per worker · Snowpipe Streaming elastic channel · one landing target per run)",
+    splines=polyline,
+    nodesep=0.5,
+    ranksep=0.55,
+    bgcolor="white"
+  ];
+
+  node [
+    shape=box,
+    style="rounded,filled",
+    fontname="Helvetica",
+    fontsize=10,
+    fillcolor="#f8f9fa",
+    color="#495057"
+  ];
+
+  edge [
+    fontname="Helvetica",
+    fontsize=9,
+    color="#6c757d"
+  ];
+
+  subgraph cluster_local {
+    label="Developer machine / CI";
+    style=filled;
+    color="#e9ecef";
+    fillcolor="#ffffff";
+
+    setup        [label="setup_elastic_ramp.py\\nsetup_elastic_iceberg.sql\\nELASTIC_K8S_METRICS + network rule"];
+    build_push   [label="build_and_push.sh\\ndocker build (arm64) → ECR"];
+    run_job      [label="run_job.sh <run-id>\\n--target-bps --duration-seconds"];
+  }
+
+  subgraph cluster_eks {
+    label="EKS cluster: snowflake-elastic-channels (persistent; us-west-2)";
+    style=filled;
+    color="#cfe2ff";
+    fillcolor="#f8fbff";
+
+    ecr        [label="ECR repo\\nworker/monitor image", shape=cylinder, fillcolor="#dbeafe"];
+    system_ng  [label="system node group\\n(m7g.large, always on)", fillcolor="#dbeafe"];
+    workers_ng [label="workers node group\\n(m7g.8xlarge × 0-15,\\nscaled per run, 31 pods/node)", fillcolor="#dbeafe"];
+    job        [label="Indexed Job\\nelastic-ramp-<run-id>\\nparallelism = completions = N (1-455)", shape=box3d, fillcolor="#bfdbfe"];
+    worker_pod [label="worker pod (× N)\\nk8s_worker.py — 1 vCPU / 1Gi\\nResortSalesGenerator → ingest SDK\\n(native Rust NDJSON encode + direct FFI\\nappend by default, ELASTIC_FAST_JSON_ENCODE)\\nJSON stats → stdout", shape=box3d, fillcolor="#bfdbfe"];
+    monitor_dep [label="Deployment: elastic-monitor\\n(1 replica, on system node)", fillcolor="#dbeafe"];
+    nat        [label="NAT gateway(s)\\n(stable egress IP per AZ)", shape=diamond, fillcolor="#dbeafe"];
+  }
+
+  subgraph cluster_snowflake {
+    label="Snowflake account — one landing target per run";
+    style=filled;
+    color="#d1e7dd";
+    fillcolor="#f6fff9";
+
+    subgraph cluster_opt_a {
+      label="Option A — FDN";
+      style=filled;
+      color="#198754";
+      fillcolor="#f3fbf6";
+
+      pipe_fdn  [label="RESORT_SALES_PIPE\\nSnowpipe Streaming elastic channel\\nMATCH_BY_COLUMN_NAME=CASE_SENSITIVE", fillcolor="#c3e6cb"];
+      table_fdn [label="RESORT_SALES\\ncurrent native table\\nROW_TIMESTAMP = TRUE", shape=component, fillcolor="#a3cfbb"];
+    }
+
+    subgraph cluster_opt_b {
+      label="Option B — Iceberg";
+      style=filled;
+      color="#1c7ed6";
+      fillcolor="#f8fbff";
+
+      pipe_ice  [label="RESORT_SALES_ICEBERG_PIPE\\nSnowpipe Streaming elastic channel\\nMATCH_BY_COLUMN_NAME=CASE_SENSITIVE", fillcolor="#d0ebff"];
+      table_ice [label="RESORT_SALES_ICEBERG\\nSnowflake-managed catalog\\nno ROW_TIMESTAMP", shape=component, fillcolor="#a5d8ff"];
+    }
+
+    k8s_metrics [label="ELASTIC_K8S_METRICS (hybrid table)\\none row per aggregation window\\n(rows/s, compressed/uncompressed\\nbytes/s, commit latency)", shape=component, fillcolor="#a3cfbb"];
+    streamlit   [label="Streamlit Monitor_App.py\\n(SPCS container runtime)", fillcolor="#d1e7dd"];
+  }
+
+  setup -> pipe_fdn [label="creates Option A", style=dashed];
+  setup -> pipe_ice [label="creates Option B", style=dashed];
+  setup -> k8s_metrics [style=dashed];
+  setup -> nat [label="allowlists\\nNAT gateway IP(s)\\n(one-time, allowlist_eks.sh)", style=dashed];
+
+  build_push -> ecr;
+  run_job -> workers_ng [label="scale_workers.sh"];
+  run_job -> job;
+  ecr -> job [label="imagePullPolicy=Always", style=dashed];
+  job -> worker_pod;
+  workers_ng -> worker_pod [label="scheduled on\\n(tainted for worker role)"];
+  worker_pod -> nat [label="streaming\\nappend_rows_with_wait()"];
+  nat -> pipe_fdn [label="Option A\\nELASTIC_PIPE_NAME=\\nRESORT_SALES_PIPE", weight=4];
+  nat -> pipe_ice [label="Option B\\nELASTIC_PIPE_NAME=\\nRESORT_SALES_ICEBERG_PIPE", weight=4];
+  pipe_fdn -> table_fdn;
+  pipe_ice -> table_ice;
+
+  worker_pod -> monitor_dep [label="stdout JSON\\n(kubectl logs API)"];
+  monitor_dep -> k8s_metrics [label="aggregate + write\\nevery flush window"];
+  system_ng -> monitor_dep [label="scheduled on"];
+  monitor_dep -> table_fdn [label="METADATA$ROW_LAST_COMMIT_TIME\\n(Option A only)", style=dotted];
+  streamlit -> table_fdn [label="live queries\\n(current table)", style=dotted];
+  streamlit -> k8s_metrics [style=dotted];
+}

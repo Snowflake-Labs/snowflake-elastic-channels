@@ -1,0 +1,75 @@
+# Copyright 2026 Snowflake Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Persistent EKS cluster for the elastic-channels EKS execution path.
+# Created once via ./create_cluster.sh and left running between runs — only
+# the "workers" managed node group scales up/down per run (./scale_workers.sh)
+# so standing cost between runs is the control plane (~$0.10/hr) plus one
+# small always-on "system" node hosting the monitor + cluster add-ons.
+#
+# Values here must stay in sync with infra/eks/lib/eks_env.sh (region,
+# cluster name, instance types) — this file is not templated, so if you
+# override those env vars, update this file to match before running eksctl.
+#
+# Both node groups set privateNetworking: true so pods egress through the
+# VPC's NAT gateway(s) rather than getting their own public IP — required for
+# infra/eks/allowlist_eks.sh's stable-IP assumption (see that script's header).
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: snowflake-elastic-channels
+  region: us-west-2
+  version: "1.31"
+  tags:
+    project: snowflake-elastic-channels
+    owner: elastic-channels-benchmark
+
+iam:
+  withOIDC: true
+
+managedNodeGroups:
+  - name: system
+    instanceType: m7g.large
+    amiFamily: AmazonLinux2023
+    minSize: 1
+    maxSize: 2
+    desiredCapacity: 1
+    volumeSize: 40
+    privateNetworking: true
+    labels:
+      role: system
+    tags:
+      project: snowflake-elastic-channels
+
+  - name: workers
+    instanceType: m7g.8xlarge
+    amiFamily: AmazonLinux2023
+    minSize: 0
+    # Fits the supported worker-count range (1-455, WORKER_COUNT_MIN/MAX in
+    # infra/eks/lib/eks_env.sh) at 31 worker pods/node: ceil(455/31)=15.
+    # Keep in sync with WORKER_NODEGROUP_MAX_NODES in infra/eks/lib/eks_env.sh.
+    maxSize: 15
+    desiredCapacity: 0
+    volumeSize: 80
+    privateNetworking: true
+    labels:
+      role: elastic-ramp-worker
+    taints:
+      - key: workload
+        value: elastic-ramp-worker
+        effect: NoSchedule
+    tags:
+      project: snowflake-elastic-channels

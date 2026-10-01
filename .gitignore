@@ -1,0 +1,49 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+
+# IDE and OS
+.idea/
+.vscode/
+.DS_Store
+
+# Snowflake CLI local state
+.snowflake/
+# Snowflake CLI bundle/staging output (snow streamlit deploy, snow app bundle)
+output/
+
+# Local secrets (use .env.example as the template)
+.env
+
+# Locally cached last-pushed image URI (infra/eks/build_and_push.sh)
+infra/eks/.last_image_uri
+
+# Rust build artifacts (native/ — optional JSON fast-path encoder, see
+# docker/Dockerfile for the multi-stage build that produces the wheel).
+# Cargo.lock IS committed (reproducible builds), matching native/ crate
+# convention elsewhere.
+native/target/
+*.whl
+
+dist/
+
+# Draft blog posts (not for version control)
+docs/blog/
+
+# Campaign analysis (not for version control)
+docs/analysis/
